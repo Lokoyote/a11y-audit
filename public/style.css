@@ -90,6 +90,8 @@ textarea { resize: vertical; font-family: ui-monospace, monospace; font-size: 0.
 .btn.primary:hover { background: #276b2b; }
 .btn.secondary { background: var(--primary); color: #fff; white-space: nowrap; }
 .btn.secondary:hover { background: var(--primary-hover); }
+.btn.danger { background: #fff; color: #c22f2f; border: 1px solid #c22f2f; }
+.btn.danger:hover { background: #fdeeee; }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 details { margin-bottom: 16px; }

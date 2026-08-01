@@ -21,9 +21,56 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const DATA_DIR = path.join(require('os').homedir(), 'a11y-audit-rapports');
 const REPORTS_DIR = path.join(DATA_DIR, 'rapports');
 const PARCOURS_DIR = path.join(DATA_DIR, 'parcours');
+// PID de l'instance précédente, s'il y en a une : sert à la tuer
+// proprement au démarrage (voir killStalePreviousInstance) pour repartir
+// systématiquement sur le code à jour au lieu de rouvrir un onglet sur un
+// process resté en mémoire avec d'anciens fichiers déjà chargés (require()
+// ne recharge jamais un .js modifié tant que le process tourne).
+const PID_FILE = path.join(DATA_DIR, 'server.pid');
 
 fs.mkdirSync(REPORTS_DIR, { recursive: true });
 fs.mkdirSync(PARCOURS_DIR, { recursive: true });
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Tue une éventuelle instance précédente (identifiée via PID_FILE) et
+ * attend qu'elle libère le port, pour garantir que ce lancement utilise
+ * bien le code actuellement sur le disque.
+ */
+async function killStalePreviousInstance() {
+  let previousPid;
+  try {
+    previousPid = parseInt(fs.readFileSync(PID_FILE, 'utf8').trim(), 10);
+  } catch {
+    return; // pas de fichier PID : rien à faire, premier lancement
+  }
+  if (!previousPid || previousPid === process.pid || !isProcessAlive(previousPid)) return;
+
+  console.log(`ℹ️  Instance précédente détectée (pid ${previousPid}) — redémarrage avec le code à jour…`);
+  try {
+    process.kill(previousPid, 'SIGTERM');
+  } catch {
+    return;
+  }
+  // On attend qu'elle se termine réellement (jusqu'à 3s), pour ne pas
+  // tenter de démarrer pendant qu'elle tient encore le port.
+  for (let i = 0; i < 30; i++) {
+    if (!isProcessAlive(previousPid)) return;
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  if (isProcessAlive(previousPid)) {
+    try { process.kill(previousPid, 'SIGKILL'); } catch { /* déjà partie */ }
+  }
+}
 
 /** @type {Map<string, {id:string, type:string, status:string, log:string[], result:any, error:string|null, child?:import('child_process').ChildProcess}>} */
 const jobs = new Map();
@@ -284,19 +331,34 @@ const server = http.createServer((req, res) => {
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    // Déjà lancé (ex: l'utilisateur a re-cliqué sur l'icône du menu) : pas
-    // une erreur, on rouvre simplement un onglet sur l'instance existante.
-    console.log(`\nℹ️  Déjà en cours d'exécution sur le port ${PORT} — ouverture d'un nouvel onglet.\n`);
-    openInBrowser(`http://localhost:${PORT}`);
-    setTimeout(() => process.exit(0), 300);
-    return;
+    // On a déjà tenté de tuer toute instance précédente avant d'arriver
+    // ici (voir plus bas) : si le port est encore occupé, ce n'est
+    // probablement pas notre propre serveur mais un autre programme.
+    console.error(`❌ Le port ${PORT} est déjà utilisé par un autre programme.`);
+    console.error(`   Fermez-le, ou changez de port : A11Y_GUI_PORT=4200 node server.js`);
+    process.exit(1);
   }
   console.error('❌ Échec du démarrage du serveur :', err.message);
   process.exit(1);
 });
 
-server.listen(PORT, () => {
-  const startUrl = `http://localhost:${PORT}`;
-  console.log(`\n🖥️  Interface graphique a11y-audit : ${startUrl}\n`);
-  openInBrowser(startUrl);
-});
+function cleanupPidFile() {
+  try {
+    if (parseInt(fs.readFileSync(PID_FILE, 'utf8').trim(), 10) === process.pid) {
+      fs.unlinkSync(PID_FILE);
+    }
+  } catch { /* rien à nettoyer */ }
+}
+process.on('exit', cleanupPidFile);
+process.on('SIGINT', () => process.exit(0));
+process.on('SIGTERM', () => process.exit(0));
+
+(async () => {
+  await killStalePreviousInstance();
+  server.listen(PORT, () => {
+    fs.writeFileSync(PID_FILE, String(process.pid), 'utf8');
+    const startUrl = `http://localhost:${PORT}`;
+    console.log(`\n🖥️  Interface graphique a11y-audit : ${startUrl}\n`);
+    openInBrowser(startUrl);
+  });
+})();

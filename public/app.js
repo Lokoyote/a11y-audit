@@ -50,7 +50,25 @@ updateLevelHint();
 
 // --- Enregistrement de parcours ---
 const recordBtn = document.getElementById('record-start');
+const recordCancelBtn = document.getElementById('record-cancel');
 const recordLog = document.getElementById('record-log');
+
+function resetRecordUi() {
+  recordBtn.disabled = false;
+  recordBtn.textContent = '🎬 Démarrer l\'enregistrement';
+  recordCancelBtn.hidden = true;
+}
+
+recordCancelBtn.addEventListener('click', async () => {
+  if (!recordCancelBtn.dataset.jobId) return;
+  recordCancelBtn.disabled = true;
+  try {
+    await fetch(`/api/jobs/${recordCancelBtn.dataset.jobId}/cancel`, { method: 'POST' });
+  } catch (err) {
+    // le polling en cours affichera l'erreur de toute façon
+  }
+  recordCancelBtn.disabled = false;
+});
 
 recordBtn.addEventListener('click', async () => {
   const url = document.getElementById('record-url').value.trim();
@@ -65,6 +83,7 @@ recordBtn.addEventListener('click', async () => {
   recordLog.hidden = false;
   recordBtn.disabled = true;
   recordBtn.textContent = '⏳ Enregistrement en cours…';
+  recordCancelBtn.hidden = false;
 
   try {
     const res = await fetch('/api/record', {
@@ -74,6 +93,7 @@ recordBtn.addEventListener('click', async () => {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+    recordCancelBtn.dataset.jobId = data.id;
 
     await pollJob(data.id, {
       onLog: (lines) => appendLog(recordLog, lines),
@@ -81,19 +101,16 @@ recordBtn.addEventListener('click', async () => {
         appendLog(recordLog, ['✅ Parcours enregistré, injecté ci-dessous dans le formulaire d\'audit.']);
         document.getElementById('parcours-json').value = result.parcoursJson;
         document.getElementById('parcours-details').open = true;
-        recordBtn.disabled = false;
-        recordBtn.textContent = '🎬 Démarrer l\'enregistrement';
+        resetRecordUi();
       },
       onError: (msg) => {
         appendLog(recordLog, [`❌ ${msg}`]);
-        recordBtn.disabled = false;
-        recordBtn.textContent = '🎬 Démarrer l\'enregistrement';
+        resetRecordUi();
       },
     });
   } catch (err) {
     appendLog(recordLog, [`❌ ${err.message}`]);
-    recordBtn.disabled = false;
-    recordBtn.textContent = '🎬 Démarrer l\'enregistrement';
+    resetRecordUi();
   }
 });
 
