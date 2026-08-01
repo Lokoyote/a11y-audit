@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>a11y-audit — Interface graphique</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <h1>🔍 a11y-audit</h1>
+    <p class="subtitle">Audit d'accessibilité WCAG — desktop &amp; mobile</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>1. Enregistrer un parcours <span class="optional">(optionnel)</span></h2>
+      <p class="hint">Ouvre un vrai navigateur pour cliquer dans le site et construire un scénario d'interaction (menu, formulaire…) qui sera rejoué pendant l'audit.</p>
+
+      <div class="field-row">
+        <label>
+          URL à enregistrer
+          <input type="url" id="record-url" placeholder="https://example.com" />
+        </label>
+        <label>
+          Viewport
+          <select id="record-viewport">
+            <option value="desktop">Desktop</option>
+            <option value="tablette">Tablette</option>
+            <option value="mobile" selected>Mobile</option>
+          </select>
+        </label>
+        <button id="record-start" class="btn secondary">🎬 Démarrer l'enregistrement</button>
+      </div>
+
+      <pre id="record-log" class="log" hidden></pre>
+    </section>
+
+    <section class="card">
+      <h2>2. Lancer un audit</h2>
+
+      <label class="block">
+        URLs à auditer <span class="hint-inline">(une par ligne)</span>
+        <textarea id="audit-urls" rows="3" placeholder="https://example.com&#10;https://example.com/contact"></textarea>
+      </label>
+
+      <div class="field-row">
+        <label>
+          Niveau WCAG
+          <select id="audit-level">
+            <option value="A">A</option>
+            <option value="AA" selected>AA</option>
+            <option value="AAA">AAA</option>
+          </select>
+        </label>
+      </div>
+      <p id="level-hint" class="hint level-hint"></p>
+
+      <div class="field-row">
+        <label class="checkboxes">
+          Cibles
+          <span><input type="checkbox" id="target-desktop" checked /> <label for="target-desktop">Desktop</label></span>
+          <span><input type="checkbox" id="target-mobile" checked /> <label for="target-mobile">Mobile</label></span>
+        </label>
+      </div>
+
+      <details id="parcours-details">
+        <summary>Fichier de parcours (JSON)</summary>
+        <p class="hint">Rempli automatiquement après un enregistrement ci-dessus, ou colle/importe un <code>parcours.json</code> existant.</p>
+        <input type="file" id="parcours-file" accept="application/json" />
+        <textarea id="parcours-json" rows="6" placeholder='{ "https://example.com": [ ... ] }'></textarea>
+      </details>
+
+      <button id="audit-start" class="btn primary">▶️ Lancer l'audit</button>
+
+      <pre id="audit-log" class="log" hidden></pre>
+
+      <div id="audit-result" class="result" hidden>
+        <p>✅ Rapport généré.</p>
+        <a id="audit-report-link" class="btn primary" href="#" target="_blank" rel="noopener">📄 Ouvrir le rapport</a>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

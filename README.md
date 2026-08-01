@@ -95,14 +95,27 @@ npx playwright install chromium   # télécharge le navigateur headless (nécess
 node index.js https://votre-site.fr
 ```
 
+**Plusieurs URLs en une seule commande** (accueil, formulaire de contact, tunnel d'achat...) — chaque URL garde son propre rapport, et une page de synthèse les relie entre elles :
+
+```bash
+node index.js https://mon-site.fr https://mon-site.fr/contact https://mon-site.fr/panier
+# ou depuis un fichier, une URL par ligne (les lignes commençant par # sont ignorées)
+node index.js --urls-file mes-urls.txt
+```
+
+À la fin de l'exécution, le rapport se **ouvre automatiquement dans le navigateur par défaut** : le rapport unique s'il n'y a qu'une URL, ou la page de synthèse (`index.html`) si plusieurs URLs ont été testées — celle-ci liste chaque site avec son score et un lien vers son rapport détaillé. Une **barre de progression** s'affiche pendant l'analyse (un audit prend du temps : chargement de la page, axe-core, vérifications clavier, checks mobile...).
+
 Options :
 
-| Option           | Description                                              | Défaut       |
-|------------------|------------------------------------------------------------|--------------|
-| `--level <A\|AA\|AAA>` | Niveau de conformité WCAG ciblé                       | `AA`         |
-| `--only <desktop\|mobile>` | Ne tester qu'un seul type d'appareil               | les deux     |
-| `--out <dossier>`     | Dossier de sortie des rapports                        | `./rapports` |
-| `--json-only`          | N'affiche que le JSON sur stdout (utile en CI)        | désactivé    |
+| Option                       | Description                                                  | Défaut       |
+|------------------------------|---------------------------------------------------------------|--------------|
+| `--level <A\|AA\|AAA>`        | Niveau de conformité WCAG ciblé                               | `AA`         |
+| `--only <desktop\|mobile>`    | Ne tester qu'un seul type d'appareil                          | les deux     |
+| `--out <dossier>`             | Dossier de sortie des rapports                                | `./rapports` |
+| `--urls-file <fichier>`       | Liste d'URLs à auditer, une par ligne                         | —            |
+| `--parcours <fichier>`        | Scénario d'interaction par URL (voir ci-dessous)              | —            |
+| `--no-open`                   | N'ouvre pas automatiquement le rapport à la fin               | désactivé    |
+| `--json-only`                 | N'affiche que le JSON sur stdout (utile en CI)                | désactivé    |
 
 Exemples :
 
@@ -116,13 +129,73 @@ node index.js https://mon-site.fr --level AAA
 # Mobile uniquement, sortie dans un dossier dédié
 node index.js https://mon-site.fr --only mobile --out ./audits/juillet
 
+# Plusieurs pages clés d'un même site, sans ouverture automatique
+node index.js https://mon-site.fr https://mon-site.fr/contact --no-open
+
 # Intégration CI/CD (sortie JSON exploitable par script)
 node index.js https://mon-site.fr --json-only > resultat.json
 ```
 
-Chaque exécution génère :
+Chaque URL analysée génère :
 - un **rapport HTML** autonome (ouvrable dans n'importe quel navigateur, aucune dépendance externe) avec score, barres par axe et tableau détaillé des problèmes ;
 - un **rapport JSON** structuré, exploitable pour du reporting automatisé, un tableau de bord ou une intégration CI/CD (ex. faire échouer un pipeline si le score < seuil).
+
+Lorsque plusieurs URLs sont testées, les rapports sont rangés dans un dossier `audit-<horodatage>/sites/<url>/`, accompagnés d'un `index.html` de synthèse à la racine.
+
+## Mode "parcours" (scénarios d'interaction)
+
+Certains contenus n'apparaissent qu'après une interaction (menu déroulant, modale, onglet...) et ne sont jamais vus par un scan de la page telle qu'elle se charge. Le mode parcours rejoue une suite d'actions sur la page **desktop**, capture un **aperçu visuel (screenshot)** après chaque étape, et relance axe-core aux étapes marquées `"audit": true` pour analyser le contenu réellement affiché à ce moment-là.
+
+Créez un fichier JSON (ex. `parcours.json`) qui associe chaque URL à sa liste d'étapes :
+
+```json
+{
+  "https://mon-site.fr": [
+    { "type": "click", "selector": "#menu-burger", "label": "Ouvrir le menu principal", "audit": true },
+    { "type": "wait", "ms": 300 },
+    { "type": "click", "selector": ".contact-modal-trigger", "label": "Ouvrir la modale de contact", "audit": true },
+    { "type": "press", "key": "Escape" }
+  ]
+}
+```
+
+Puis lancez :
+
+```bash
+node index.js https://mon-site.fr --parcours parcours.json
+```
+
+Étapes disponibles :
+
+| Type              | Champs                          | Effet                                      |
+|-------------------|----------------------------------|---------------------------------------------|
+| `click`           | `selector`, `timeout?`           | Clique sur l'élément                        |
+| `fill`            | `selector`, `value`, `timeout?`  | Remplit un champ de formulaire              |
+| `press`           | `key`                            | Appuie sur une touche clavier (ex. `Escape`) |
+| `hover`           | `selector`, `timeout?`           | Survole un élément                          |
+| `wait`            | `ms`                             | Attend une durée fixe                       |
+| `waitForSelector` | `selector`, `timeout?`           | Attend qu'un élément apparaisse             |
+| `goto`            | `url`                            | Navigue vers une autre URL                  |
+
+Chaque étape accepte aussi `label` (texte affiché dans le rapport et la barre de progression) et `audit: true` (relance axe-core dans l'état affiché). Le rapport HTML affiche ensuite une section **"Aperçu du parcours"** : une "pellicule" de captures d'écran, une par étape, avec le résultat du mini-audit quand il a été demandé.
+
+### Enregistrer un parcours en cliquant (alternative à l'écriture manuelle)
+
+Plutôt que d'écrire le JSON à la main, `--record` ouvre un vrai navigateur (visible) sur l'URL choisie, dans le viewport souhaité :
+
+```bash
+node index.js --record https://mon-site.fr --record-viewport mobile --record-out parcours.json
+```
+
+Cliquez ensuite directement dans la page : un menu apparaît pour choisir l'action (clic, remplissage de champ, survol, attente d'un élément), demande un libellé et si l'étape doit relancer axe-core (`audit: true`). L'action est ensuite réellement rejouée pour que vous puissiez continuer à naviguer normalement (ouvrir un menu, valider un formulaire...). Un bandeau en haut de la page permet de terminer et sauvegarder :
+
+| Option                  | Description                                          | Défaut          |
+|--------------------------|-------------------------------------------------------|-----------------|
+| `--record <url>`         | Lance l'enregistrement sur cette URL                  | —               |
+| `--record-viewport <v>`  | `desktop` \| `tablette` \| `mobile`                    | `desktop`       |
+| `--record-out <fichier>` | Fichier `--parcours` où sauvegarder (fusionné si existant) | `./parcours.json` |
+
+Le fichier généré est **directement réutilisable** avec `--parcours` comme montré plus haut. C'est volontairement basé sur des boîtes de dialogue simples (`prompt`/`confirm`) plutôt qu'une interface plus élaborée — cohérent avec l'esprit "base simple" de l'outil ; à améliorer plus tard si besoin (édition des étapes, réordonnancement...).
 
 ## Intégration CI/CD (exemple)
 
@@ -139,19 +212,22 @@ fi
 
 ```
 a11y-audit/
-├── index.js                # CLI
+├── index.js                # CLI (multi-URL, barre de progression, ouverture auto)
 ├── lib/
 │   ├── config.js            # Niveaux WCAG, poids de scoring, mapping des axes
 │   ├── scan.js               # Orchestration Playwright + axe-core (desktop/mobile)
 │   ├── customChecks.js       # Vérifs génériques (lang, titres, alt, labels, clavier...)
 │   ├── mobileChecks.js       # Vérifs mobile (viewport meta, reflow, cibles tactiles)
+│   ├── parcours.js           # Mode parcours : interactions scriptées + captures d'écran
+│   ├── progress.js           # Barre de progression CLI (sans dépendance)
+│   ├── opener.js             # Ouverture cross-plateforme du rapport dans le navigateur
 │   ├── scorer.js             # Calcul du score global et par axe
-│   └── report.js             # Génération des rapports HTML + JSON
+│   └── report.js             # Génération des rapports HTML + JSON + synthèse multi-URL
 └── package.json
 ```
 
 ## Limites connues
 
 - Ne remplace pas un test utilisateur réel avec des technologies d'assistance (lecteurs d'écran type NVDA/JAWS/VoiceOver).
-- Les contenus générés dynamiquement après interaction (modales, menus déroulants...) ne sont testés que si le script navigue jusqu'à eux — une évolution possible est d'ajouter un mode "parcours" (clic sur un menu, ouverture d'une modale, etc.).
-- Le test se limite à une seule page par exécution ; pour un site entier, lancez l'outil sur chaque URL clé (accueil, formulaire de contact, tunnel d'achat...) ou scriptez une boucle sur une liste d'URLs.
+- Le mode "parcours" reste volontairement simple : pas d'enregistreur d'actions, il faut fournir soi-même les sélecteurs CSS des éléments à tester (menu, modale...).
+- Le parcours ne s'exécute que sur le viewport desktop, pour limiter le temps d'analyse.
