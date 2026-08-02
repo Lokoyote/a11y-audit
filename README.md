@@ -2,6 +2,8 @@
 
 Outil automatisé d'audit d'accessibilité web (WCAG 2.0 / 2.1 / 2.2, niveaux A / AA / AAA), qui teste **une page en version desktop et mobile**, calcule un **score global sur 100** et liste des **axes d'amélioration priorisés** par sévérité.
 
+Utilisable en ligne de commande (`a11y-audit`) ou via une **interface graphique locale** (`a11y-audit-gui`, ou l'icône « a11y-audit » du menu des applications) — voir [Interface graphique](#interface-graphique-recommandé-pour-les-non-développeurs).
+
 ## Ce qu'il vérifie
 
 - **Moteur axe-core** (référence du marché, utilisé par Google, Microsoft, Deque) : contraste, ARIA, structure sémantique, formulaires, tableaux, etc. — couvre la quasi-totalité des critères WCAG testables automatiquement.
@@ -37,8 +39,9 @@ De plus en plus d'utilisateurs malvoyants s'appuient sur des IA en complément d
 ## Score et axes
 
 - Un **score global (0-100)** par device (desktop / mobile) et un score global combiné.
-- Un **score par axe**, basé sur les 4 principes WCAG (POUR) : Perceptible, Utilisable, Compréhensible, Robuste, + un axe **Mobile** dédié.
+- Un **score par axe**, basé sur les 4 principes WCAG (POUR) : Perceptible, Utilisable, Compréhensible, Robuste, + deux axes dédiés **Mobile** et **IA & Agents**. Le rapport HTML inclut une légende expliquant chaque axe et la façon dont le score est calculé (pénalités cumulées, pas un pourcentage d'éléments conformes).
 - Chaque problème est classé par **sévérité** (Critique / Élevée / Modérée / Mineure), avec description en français, nombre d'éléments concernés et lien vers la documentation du correctif.
+- Pour la plupart des problèmes, un bouton **« Voir où ça se trouve dans le code »** déplie le détail : sélecteur CSS, extrait de code source, et explication du point précis qui échoue — jusqu'à 5 éléments par problème. Les vérifications globales de page (langue, titre, repères de navigation absents...) n'ont pas de localisation précise puisqu'elles ne portent pas sur un élément particulier.
 
 ⚠️ **Important** : un score élevé réduit le risque mais ne garantit pas la conformité totale. Environ 30-40% des critères WCAG nécessitent une vérification humaine (pertinence des alternatives textuelles, ordre de lecture logique, clarté du langage...). Cet outil est un complément à un audit manuel, pas un substitut.
 
@@ -56,17 +59,20 @@ chmod +x install.sh
 ```
 
 Ces scripts font tout automatiquement :
-1. Vérifient que Node.js 18+ est installé
+1. Vérifient que Node.js 18+ est installé (l'installent automatiquement sur Ubuntu/Debian si absent)
 2. Copient le projet vers un dossier dédié (`~/.local/share/a11y-audit` sur Linux/macOS, `%LOCALAPPDATA%\a11y-audit` sur Windows)
 3. Installent les dépendances npm
 4. Téléchargent le navigateur Chromium headless
-5. Créent une **commande globale `a11y-audit`** utilisable depuis n'importe quel dossier
+5. Créent une **commande globale `a11y-audit`** (CLI) et **`a11y-audit-gui`** (interface graphique), utilisables depuis n'importe quel dossier
+6. Sur Linux, ajoutent une **icône « a11y-audit » dans le menu des applications** (double-clic, sans terminal — pratique si vous n'êtes pas à l'aise en ligne de commande)
 
 Une fois installé :
 ```bash
 a11y-audit https://votre-site.fr
 a11y-audit https://votre-site.fr --level AAA --out ./audits
 ```
+
+📁 **Vos rapports et parcours enregistrés sont conservés dans `~/a11y-audit-rapports`**, un dossier séparé du dossier d'installation — il n'est donc **pas** supprimé par `uninstall.sh`.
 
 ### Désinstallation automatique
 
@@ -88,6 +94,23 @@ Ces scripts suppriment intégralement le dossier d'installation et la commande g
 npm install
 npx playwright install chromium   # télécharge le navigateur headless (nécessaire une seule fois)
 ```
+
+## Interface graphique (recommandé pour les non-développeurs)
+
+Une alternative à la ligne de commande, pratique si vous n'êtes pas à l'aise avec le terminal : un serveur local avec une page web simple, sans dépendance supplémentaire.
+
+```bash
+a11y-audit-gui
+# ou, sans installation préalable :
+node server.js
+```
+
+Ça ouvre automatiquement `http://localhost:4173` dans votre navigateur, avec deux blocs :
+
+1. **Enregistrer un parcours** *(optionnel)* — donnez une URL et un viewport, un vrai navigateur s'ouvre pour cliquer dans le site (voir [Enregistrer un parcours en cliquant](#enregistrer-un-parcours-en-cliquant-alternative-à-lécriture-manuelle) ci-dessous) ; le résultat est injecté automatiquement dans le formulaire d'audit une fois terminé. Un bouton **Annuler** permet de débloquer manuellement si besoin.
+2. **Lancer un audit** — URLs (une par ligne), niveau WCAG (avec une explication de chaque niveau affichée sous le sélecteur), cibles desktop/mobile, et fichier de parcours (auto-rempli ou importé). Le rapport généré s'ouvre directement dans un nouvel onglet, sans souci d'accès fichier (les navigateurs installés en *snap*, comme Firefox par défaut sur Ubuntu récent, bloquent l'ouverture directe de fichiers HTML locaux situés sous un dossier caché — ce n'est pas un problème ici puisque le rapport est servi en HTTP).
+
+Si l'interface est relancée (icône ou commande) alors qu'elle tourne déjà, l'instance précédente est automatiquement arrêtée et redémarrée avec le code actuellement sur le disque — pas besoin de la fermer manuellement au préalable.
 
 ## Utilisation
 
@@ -213,15 +236,23 @@ fi
 ```
 a11y-audit/
 ├── index.js                # CLI (multi-URL, barre de progression, ouverture auto)
+├── server.js                # Serveur de l'interface graphique (http://localhost:4173)
+├── public/                  # Frontend de l'interface graphique
+│   ├── index.html
+│   ├── app.js
+│   └── style.css
 ├── lib/
 │   ├── config.js            # Niveaux WCAG, poids de scoring, mapping des axes
 │   ├── scan.js               # Orchestration Playwright + axe-core (desktop/mobile)
 │   ├── customChecks.js       # Vérifs génériques (lang, titres, alt, labels, clavier...)
+│   ├── advancedChecks.js     # Heuristiques avancées (faux boutons, focus après nav, zoom 200%, reduced-motion)
 │   ├── mobileChecks.js       # Vérifs mobile (viewport meta, reflow, cibles tactiles)
+│   ├── aiAgentChecks.js      # Axe "IA & Agents" (intitulés vagues, icônes sans nom, doublons)
 │   ├── parcours.js           # Mode parcours : interactions scriptées + captures d'écran
+│   ├── recorder.js           # Enregistrement de parcours en cliquant (--record)
 │   ├── progress.js           # Barre de progression CLI (sans dépendance)
 │   ├── opener.js             # Ouverture cross-plateforme du rapport dans le navigateur
-│   ├── scorer.js             # Calcul du score global et par axe
+│   ├── scorer.js             # Calcul du score global et par axe, détail des localisations
 │   └── report.js             # Génération des rapports HTML + JSON + synthèse multi-URL
 └── package.json
 ```
@@ -229,5 +260,5 @@ a11y-audit/
 ## Limites connues
 
 - Ne remplace pas un test utilisateur réel avec des technologies d'assistance (lecteurs d'écran type NVDA/JAWS/VoiceOver).
-- Le mode "parcours" reste volontairement simple : pas d'enregistreur d'actions, il faut fournir soi-même les sélecteurs CSS des éléments à tester (menu, modale...).
 - Le parcours ne s'exécute que sur le viewport desktop, pour limiter le temps d'analyse.
+- Les heuristiques `[Heuristique avancée]` et l'axe "IA & Agents" sont expérimentaux et peuvent produire de rares faux positifs — à vérifier manuellement en cas de doute.
